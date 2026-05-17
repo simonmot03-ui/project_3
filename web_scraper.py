@@ -18,20 +18,22 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 
-
 def zkontroluj_argumenty():
-    """Funguje v Colab i terminálu"""
-    try:
-        url = sys.argv[1]
-        vystup = sys.argv[2]
+    """Zkontroluje vstupní argumenty"""
+    if len(sys.argv) != 3:
+        print("Použití: python projekt_3.py <URL> <vystup.csv>")
+        sys.exit(1)
 
-        if "volby.cz" not in url or not vystup.endswith(".csv"):
-            raise ValueError
+    url = sys.argv[1]
+    vystup = sys.argv[2]
 
-    except (IndexError, ValueError):
-        print(" Colab režim → používám testovací hodnoty")
-        url = "https://www.volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2101"
-        vystup = "vysledky.csv"
+    if "volby.cz" not in url:
+        print("Chyba: Neplatná URL.")
+        sys.exit(1)
+
+    if not vystup.endswith(".csv"):
+        print("Chyba: Výstup musí být .csv soubor.")
+        sys.exit(1)
 
     return url, vystup
 
@@ -42,11 +44,12 @@ def stahni_stranku(url):
         response.raise_for_status()
         return response.text
     except requests.exceptions.RequestException as e:
-        raise ConnectionError(f"Chyba při stahování stránky: {e}")
+        print(f"Chyba při stahování stránky: {e}")
+        sys.exit(1)
 
 
 def ziskej_obce(html):
-    """Získá seznam obcí (SPRÁVNĚ přes ps311)"""
+    """Získá seznam obcí"""
     soup = BeautifulSoup(html, "html.parser")
     obce = []
 
@@ -64,7 +67,8 @@ def ziskej_obce(html):
                 obce.append((kod, nazev, link))
 
     if not obce:
-        raise ValueError("Nepodařilo se najít žádné obce.")
+        print("Chyba: Nepodařilo se najít žádné obce.")
+        sys.exit(1)
 
     return obce
 
@@ -79,7 +83,8 @@ def zpracuj_obec(url):
         obalky = soup.find("td", headers="sa3").text.strip()
         platne = soup.find("td", headers="sa6").text.strip()
     except AttributeError:
-        raise ValueError("Nepodařilo se načíst statistiky obce.")
+        print("Chyba: Nepodařilo se načíst statistiky obce.")
+        sys.exit(1)
 
     strany = []
     hlasy = []
@@ -102,44 +107,40 @@ def zpracuj_obec(url):
 def uloz_csv(soubor, data, hlavicka):
     try:
         with open(soubor, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f, delimiter=";")
             writer.writerow(hlavicka)
             writer.writerows(data)
     except IOError as e:
-        raise IOError(f"Chyba při zápisu do souboru: {e}")
+        print(f"Chyba při zápisu do souboru: {e}")
+        sys.exit(1)
 
 
 def main():
-    try:
-        url, vystup = zkontroluj_argumenty()
+    url, vystup = zkontroluj_argumenty()
 
-        print(f" Stahuji: {url}")
+    print(f"Stahuji: {url}")
 
-        html = stahni_stranku(url)
-        obce = ziskej_obce(html)
+    html = stahni_stranku(url)
+    obce = ziskej_obce(html)
 
-        vysledky = []
-        hlavicka = ["kód obce", "název obce", "voliči", "obálky", "platné hlasy"]
+    vysledky = []
+    hlavicka = ["kód obce", "název obce", "voliči", "obálky", "platné hlasy"]
 
-        # získání názvů stran z první obce
-        _, _, _, strany, _ = zpracuj_obec(obce[0][2])
-        hlavicka.extend(strany)
+    # získání názvů stran z první obce
+    _, _, _, strany, _ = zpracuj_obec(obce[0][2])
+    hlavicka.extend(strany)
 
-        for kod, nazev, link in obce:
-            print(f" Zpracovávám: {nazev}")
+    for kod, nazev, link in obce:
+        print(f"Zpracovávám: {nazev}")
 
-            volici, obalky, platne, _, hlasy = zpracuj_obec(link)
+        volici, obalky, platne, _, hlasy = zpracuj_obec(link)
 
-            radek = [kod, nazev, volici, obalky, platne] + hlasy
-            vysledky.append(radek)
+        radek = [kod, nazev, volici, obalky, platne] + hlasy
+        vysledky.append(radek)
 
-        uloz_csv(vystup, vysledky, hlavicka)
+    uloz_csv(vystup, vysledky, hlavicka)
 
-        print(f"\n Hotovo! Uloženo jako: {vystup}")
-
-    except Exception as e:
-        print(f"\n Chyba: {e}")
-        return
+    print(f"\nHotovo! Uloženo jako: {vystup}")
 
 
 if __name__ == "__main__":
